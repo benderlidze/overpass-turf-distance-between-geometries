@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+//turf
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/5.1.6/turf.min.js"></script>
+
+
+
+<script>
+
+    const test = {
+        "type": "Feature",
+        "properties": {},
+        "geometry": {
+            "coordinates": [
+                [
+                    [
+                        19.966527411691857,
+                        50.05682162679267
+                    ],
+                    [
+                        19.973335333203323,
+                        50.05666171652288
+                    ],
+                    [
+                        19.977777086871555,
+                        50.055222500108954
+                    ],
+                    [
+                        19.97723743455643,
+                        50.04970510393383
+                    ],
+                    [
+                        19.983049074870735,
+                        50.05823414436543
+                    ],
+                    [
+                        19.973003239470955,
+                        50.06015296954314
+                    ],
+                    [
+                        19.966527411691857,
+                        50.05682162679267
+                    ]
+                ]
+            ],
+            "type": "Polygon"
+        }
+    }
+
+    const fetchData = async () => {
+
+        const bbox = {
+            south: 50.04995327292389,
+            west: 19.96172327331867,
+            north: 50.05901170897647,
+            east: 19.973342602771183
+        };
+        const bboxString = `${bbox.south},${bbox.west},${bbox.north},${bbox.east}`;
+
+        const query = `
+        [out:json];
+        (
+            way["power"="line"](${bboxString});
+            way["power"="substation"](${bboxString});
+        );convert item ::=::,::geom=geom(),_osm_type=type();out geom;`;
+
+        const api = await fetch("https://www.overpass-api.de/api/interpreter?", {
+            method: "POST",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+            },
+            body: query,
+        });
+
+        const overpassResults = await api.json();
+
+        const overpassGeo = overpassResults.elements.map((el) => {
+            return {
+                type: "Feature",
+                properties: {},
+                geometry: el.geometry,
+            };
+        }) || [];
+
+        console.log(overpassGeo)
+        s = turf.featureCollection(overpassGeo)
+        const d = JSON.stringify(s)
+
+        console.log(d)
+
+
+
+
+        //convert polygon to line
+        const poly = turf.polygonToLine(test)
+        console.log(poly)
+
+
+        const pins = splitObjectIntoPoints(s, 0.1) // 0.1 km = 100 m
+        const distance = pins.map(pin => {
+
+            var distance = turf.pointToLineDistance(pin, poly, { units: 'kilometers' });
+            return {
+                pin,
+                distance
+            }
+
+        }).reduce((prev, current) => (prev.distance < current.distance) ? prev : current)
+
+        console.log('distance', distance);
+
+    }
+    fetchData()
+
+
+
+
+    function splitObjectIntoPoints(geometry, distanceBetweenPoints) {
+        // Validate input
+        if (!geometry || !distanceBetweenPoints) {
+            console.error('Invalid input. Please provide a geometry and distance.');
+            return [];
+        }
+        const lines = convertToLineString(geometry)
+        log(lines)
+        const points = []
+
+        lines.forEach(line => {
+            const arr = splitLine(line, distanceBetweenPoints)
+            points.push(arr)
+            points.push(turf.coordAll(line))//add original LINE vertices too
+        })
+
+        log(points)
+
+        const flat = points.flat(Infinity)//flat and then rebuild to pairs
+
+        const arr = []
+        for (let i = 0; i < flat.length; i++) {
+            if (i % 2 === 0) {
+                arr.push([flat[i], flat[i + 1]])
+            }
+        }
+        log(arr)
+
+        const pins = arr.map(pin => {
+            return turf.point(pin)
+        })
+
+        return pins;
+    }
+
+    function splitLine(geometry, distanceBetweenPoints) {
+        // Calculate the total length of the geometry
+        const totalLength = turf.length(geometry);
+        // Initialize variables
+        let currentDistance = 0;
+        const points = [];
+        // Iterate along the geometry and add points every specified distance
+        while (currentDistance < totalLength) {
+            const point = turf.along(geometry, currentDistance);
+            points.push(point.geometry.coordinates);
+            currentDistance += distanceBetweenPoints;
+        }
+        return points;
+    }
+
+
+    function convertToLineString(geometry) {
+        if (!geometry) {
+            console.error('Invalid input. Please provide a geometry.');
+            return null;
+        }
+        if (geometry.features && geometry.features.length > 0) {
+            return geometry.features.map(obj => {
+                if (obj.geometry.type === "Polygon") {
+                    return turf.polygonToLine(obj)
+                }
+                return obj
+            });
+        }
+    }
+
+    function log(data) {
+        console.log(JSON.stringify(data))
+    }
+
+    function flattenArray(arr) {
+        return arr.reduce((flat, item) => {
+            return flat.concat(Array.isArray(item) ? flattenArray(item) : item);
+        }, []);
+    }
+</script>
