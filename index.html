@@ -10,16 +10,13 @@
         fetchData('line'),
         fetchData('substation')
     ]).then((results) => {
-
         const [lineDistance, substationDistance] = results || [];
-
         const res = {
             line: lineDistance,
             substation: substationDistance
         }
         console.log('res', res);
     });
-
 
     async function fetchData(type = 'line') {
 
@@ -106,7 +103,6 @@
             return [];
         }
         const lines = convertToLineString(geometry)
-        log(lines)
         const points = []
 
         lines.forEach(line => {
@@ -115,7 +111,6 @@
             points.push(turf.coordAll(line))//add original LINE vertices too
         })
 
-        log(points)
 
         const flat = points.flat(Infinity)//flat and then rebuild to pairs
         const arr = []
@@ -124,7 +119,6 @@
                 arr.push([flat[i], flat[i + 1]])
             }
         }
-        log(arr)
 
         const pins = arr.map(pin => {
             return turf.point(pin)
@@ -162,10 +156,6 @@
                 return obj
             });
         }
-    }
-
-    function log(data) {
-        //console.log(JSON.stringify(data))
     }
 
     function flattenArray(arr) {
