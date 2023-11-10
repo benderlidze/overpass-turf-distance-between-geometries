@@ -1,53 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
-//turf
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/5.1.6/turf.min.js"></script>
-
-
 
 <script>
 
-    const test = {
-        "type": "Feature",
-        "properties": {},
-        "geometry": {
-            "coordinates": [
-                [
-                    [
-                        19.966527411691857,
-                        50.05682162679267
-                    ],
-                    [
-                        19.973335333203323,
-                        50.05666171652288
-                    ],
-                    [
-                        19.977777086871555,
-                        50.055222500108954
-                    ],
-                    [
-                        19.97723743455643,
-                        50.04970510393383
-                    ],
-                    [
-                        19.983049074870735,
-                        50.05823414436543
-                    ],
-                    [
-                        19.973003239470955,
-                        50.06015296954314
-                    ],
-                    [
-                        19.966527411691857,
-                        50.05682162679267
-                    ]
-                ]
-            ],
-            "type": "Polygon"
-        }
-    }
+    const geojson = { "type": "FeatureCollection", "features": [{ "type": "Feature", "properties": {}, "geometry": { "coordinates": [[[19.963844689161817, 50.05730424833288], [19.96442799178982, 50.05648298557415], [19.96555366352797, 50.05655525726107], [19.965420629595656, 50.0575604794366], [19.963844689161817, 50.05730424833288]]], "type": "Polygon" } }, { "type": "Feature", "properties": {}, "geometry": { "coordinates": [[[19.96691470299396, 50.056929754258306], [19.966229066571458, 50.05633187169525], [19.967262637895175, 50.055602576284684], [19.968715777776737, 50.05636472257896], [19.96691470299396, 50.056929754258306]]], "type": "Polygon" } }, { "type": "Feature", "properties": {}, "geometry": { "coordinates": [[[19.96858253528626, 50.05531985354105], [19.96864393556291, 50.05458397233048], [19.970189175858962, 50.05455769064997], [19.97017894248009, 50.05526072064649], [19.96858253528626, 50.05531985354105]]], "type": "Polygon" } }] }
 
-    const fetchData = async () => {
+    Promise.all([
+        fetchData('line'),
+        fetchData('substation')
+    ]).then((results) => {
+
+        const [lineDistance, substationDistance] = results || [];
+
+        const res = {
+            line: lineDistance,
+            substation: substationDistance
+        }
+        console.log('res', res);
+    });
+
+
+    async function fetchData(type = 'line') {
 
         const bbox = {
             south: 50.04995327292389,
@@ -55,13 +29,13 @@
             north: 50.05901170897647,
             east: 19.973342602771183
         };
-        const bboxString = `${bbox.south},${bbox.west},${bbox.north},${bbox.east}`;
 
+        const bboxString = `${bbox.south},${bbox.west},${bbox.north},${bbox.east}`;
+        const powerType = type === 'line' ? 'line' : 'substation';
         const query = `
         [out:json];
         (
-            way["power"="line"](${bboxString});
-            way["power"="substation"](${bboxString});
+            way["power"=${powerType}](${bboxString});
         );convert item ::=::,::geom=geom(),_osm_type=type();out geom;`;
 
         const api = await fetch("https://www.overpass-api.de/api/interpreter?", {
@@ -74,7 +48,6 @@
         });
 
         const overpassResults = await api.json();
-
         const overpassGeo = overpassResults.elements.map((el) => {
             return {
                 type: "Feature",
@@ -89,31 +62,41 @@
 
         console.log(d)
 
+        const distance = getDistance(geojson)
+        return distance;
+    }
 
+    function getDistance(geojson) {
 
+        console.log('geojson------->', geojson);
+        if (geojson.type === "FeatureCollection") {
+            return geojson.features.map(feature => {
+                if (feature.geometry.type === "Polygon") {
+                    return getDistanceToPolygon(feature)
+                }
+                return { "error": "not a polygon collection" }
+            })
+        } else {
+            if (geojson.geometry.type === "Polygon") {
+                return getDistanceToPolygon(geojson)
+            }
+            return { "error": "not a polygon" }
+        }
+        return { "error": "not a polygon" }
+    }
 
-        //convert polygon to line
-        const poly = turf.polygonToLine(test)
-        console.log(poly)
-
-
+    function getDistanceToPolygon(polygon) {
+        const poly = turf.polygonToLine(polygon)
         const pins = splitObjectIntoPoints(s, 0.1) // 0.1 km = 100 m
         const distance = pins.map(pin => {
-
             var distance = turf.pointToLineDistance(pin, poly, { units: 'kilometers' });
             return {
-                pin,
+                coords: turf.getCoords(pin),
                 distance
             }
-
         }).reduce((prev, current) => (prev.distance < current.distance) ? prev : current)
-
-        console.log('distance', distance);
-
+        return distance
     }
-    fetchData()
-
-
 
 
     function splitObjectIntoPoints(geometry, distanceBetweenPoints) {
@@ -135,7 +118,6 @@
         log(points)
 
         const flat = points.flat(Infinity)//flat and then rebuild to pairs
-
         const arr = []
         for (let i = 0; i < flat.length; i++) {
             if (i % 2 === 0) {
@@ -183,7 +165,7 @@
     }
 
     function log(data) {
-        console.log(JSON.stringify(data))
+        //console.log(JSON.stringify(data))
     }
 
     function flattenArray(arr) {
